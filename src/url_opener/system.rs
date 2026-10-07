@@ -14,26 +14,27 @@ impl UrlOpenCommandRunner for SystemCommandRunner {
         which::which(command).is_ok()
     }
 
-    fn run(&self, tool: UrlOpenTool, url: &str) -> Result<(), UrlOpenError> {
-        let mut child = Command::new(tool.name)
+    fn run(&self, tool: &UrlOpenTool, url: &str) -> Result<(), UrlOpenError> {
+        let mut child = Command::new(&tool.program)
+            .args(&tool.args)
             .arg(url)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .map_err(|error| UrlOpenError::SpawnFailed {
-                tool: tool.name.to_string(),
+                tool: tool.label(),
                 message: error.to_string(),
             })?;
         let status = child.wait().map_err(|error| UrlOpenError::WaitFailed {
-            tool: tool.name.to_string(),
+            tool: tool.label(),
             message: error.to_string(),
         })?;
         if status.success() {
             Ok(())
         } else {
             Err(UrlOpenError::CommandFailed {
-                tool: tool.name.to_string(),
+                tool: tool.label(),
                 status: status.to_string(),
             })
         }

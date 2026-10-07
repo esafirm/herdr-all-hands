@@ -190,6 +190,7 @@ mod tests {
             action: PickerAction::Copy,
             custom_patterns: Vec::new(),
             theme: Default::default(),
+            browser: Default::default(),
         }
     }
 

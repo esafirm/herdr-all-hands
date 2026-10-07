@@ -1,4 +1,5 @@
 use crate::theme::PickerTheme;
+use crate::url_opener::BrowserChoice;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -180,6 +181,8 @@ pub struct PickerSnapshot {
     pub custom_patterns: Vec<PatternSpec>,
     #[serde(default)]
     pub theme: PickerTheme,
+    #[serde(default)]
+    pub browser: BrowserChoice,
 }
 
 /// Direction of a Herdr binary pane split as exposed by layout snapshots and replay commands.

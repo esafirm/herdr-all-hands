@@ -2,7 +2,7 @@
 
 Herdr Pluck is a Herdr plugin for quickly copying visible terminal tokens or opening visible URLs with short keyboard hints, inspired by `tmux-fingers`.
 
-Invoke an action while a pane is focused and type the displayed hint for the item you want. The pluck action copies the selected text to your system clipboard, while the URL action opens the selection in your default browser. Escape or Ctrl-C cancels.
+Invoke an action while a pane is focused and type the displayed hint for the item you want. The pluck action copies the selected text to your system clipboard, while the URL action opens the selection in your browser (Google Chrome by default, [configurable](#browser)). Escape or Ctrl-C cancels.
 
 ![Herdr Pluck demo](artifacts/pluck-demo-themed.gif)
 
@@ -17,8 +17,8 @@ Invoke an action while a pane is focused and type the displayed hint for the ite
     - Linux Wayland: `wl-copy`
     - Linux X11: `xclip` or `xsel`
 - For opening URLs:
-    - macOS: `open`
-    - Linux: `xdg-open`
+    - macOS: `open` (plus Google Chrome, or another [configured browser](#browser))
+    - Linux: `google-chrome` or `xdg-open`
 
 ## Install
 
@@ -86,11 +86,11 @@ command = "esafirm.herdr-all-hands.pluck"
 description = "pluck visible token"
 ```
 
-To bind the dedicated URL action separately:
+To bind the dedicated URL action separately (`prefix+o` is Herdr's default for `open_notification_target`, so pick another key):
 
 ```toml
 [[keys.command]]
-key = "prefix+o"
+key = "prefix+u"
 type = "plugin_action"
 command = "esafirm.herdr-all-hands.open-url"
 description = "open visible URL"
@@ -110,7 +110,7 @@ herdr server reload-config
 4. Type the shown one- or two-letter hint to copy that token and close the picker.
 5. Press Escape or Ctrl-C to cancel without copying.
 
-The `open-url` action uses the same picker flow, but shows only `http://`, `https://`, and `file://` URLs and opens the selected URL through the system default handler without changing the clipboard.
+The `open-url` action uses the same picker flow, but shows only `http://`, `https://`, and `file://` URLs and opens the selected URL in your [browser](#browser) without changing the clipboard.
 
 You can also invoke either action from the CLI:
 
@@ -203,6 +203,32 @@ Colors accept:
 - `reset` (or `default`) for the terminal's default color.
 
 An invalid color is reported and that field falls back to its default. Themes are only read from the global config, not project-local files.
+
+## Browser
+
+The `open-url` action opens URLs in Google Chrome by default. If Chrome can't be launched, it falls back to the system default handler (`open` / `xdg-open`). Change it in the global `config.toml`:
+
+```toml
+[open_url]
+browser = "firefox"
+```
+
+`browser` accepts:
+
+- An alias: `chrome`, `chromium`, `firefox`, `safari`, `arc`, `brave`, `edge`.
+- Any other macOS application name (opened with `open -a <name>`), or a Linux command.
+- `default` (or `system`) for the system default handler.
+
+A browser you set explicitly doesn't fall back; if it fails, the error is shown in the picker.
+
+For full control, set `command` to an argv list. The URL is appended as the last argument, and `command` takes precedence over `browser`:
+
+```toml
+[open_url]
+command = ["open", "-na", "Google Chrome", "--args", "--profile-directory=Profile 1"]
+```
+
+Like the theme, browser settings are only read from the global config.
 
 ## Releasing binaries
 

@@ -119,6 +119,7 @@ pub fn build_source_snapshot(
         action,
         custom_patterns: config.custom_patterns,
         theme: config.theme,
+        browser: config.browser,
     })
 }
 

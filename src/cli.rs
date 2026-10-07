@@ -24,7 +24,7 @@ pub enum Command {
         target_pane: Option<String>,
     },
 
-    /// Action entrypoint: open a selected visible URL in the default browser.
+    /// Action entrypoint: open a selected visible URL in the configured browser.
     OpenUrl {
         /// Override the pane to pluck from. Defaults to Herdr invocation context.
         #[arg(long)]

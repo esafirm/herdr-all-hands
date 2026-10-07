@@ -19,7 +19,7 @@ pub fn run_picker(snapshot: &PickerSnapshot) -> Result<PickerOutcome> {
     let mut stdout = io::stdout();
     let mut input = CrosstermInputSource;
     let clipboard = SystemClipboard;
-    let url_opener = SystemUrlOpener;
+    let url_opener = SystemUrlOpener::new(snapshot.browser.clone());
     let _raw_mode = RawModeGuard::enable()?;
     let _cursor = CursorGuard::hide()?;
     run_picker_with(snapshot, &mut input, &clipboard, &url_opener, &mut stdout)
@@ -202,6 +202,7 @@ mod tests {
             action: PickerAction::Copy,
             custom_patterns: Vec::new(),
             theme: Default::default(),
+            browser: Default::default(),
         }
     }
 
@@ -264,7 +265,9 @@ mod tests {
         let mut input = FakeInput::new(vec![PickerInputEvent::Char('a')]);
         let clipboard = FakeClipboard::default();
         let opener = FakeUrlOpener {
-            error: Some(UrlOpenError::NoToolFound { tool: "fake-open" }),
+            error: Some(UrlOpenError::NoToolFound {
+                tool: "fake-open".into(),
+            }),
             ..FakeUrlOpener::default()
         };
         let mut output = Vec::new();

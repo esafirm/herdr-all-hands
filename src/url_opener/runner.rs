@@ -6,5 +6,5 @@ use super::tool::UrlOpenTool;
  */
 pub(crate) trait UrlOpenCommandRunner {
     fn command_exists(&self, command: &str) -> bool;
-    fn run(&self, tool: UrlOpenTool, url: &str) -> Result<(), UrlOpenError>;
+    fn run(&self, tool: &UrlOpenTool, url: &str) -> Result<(), UrlOpenError>;
 }

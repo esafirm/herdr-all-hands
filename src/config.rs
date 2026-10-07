@@ -1,6 +1,7 @@
 use crate::model::{PatternSpec, PickerAction};
 use crate::patterns::CustomPatternDefinition;
 use crate::theme::{PickerTheme, TextStyle, ThemeColor};
+use crate::url_opener::BrowserChoice;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -20,6 +21,17 @@ struct GlobalConfigFile {
     patterns: Vec<PatternConfigEntry>,
     #[serde(default)]
     theme: ThemeConfig,
+    #[serde(default)]
+    open_url: OpenUrlConfig,
+}
+
+/// Browser settings for the open-url action.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+struct OpenUrlConfig {
+    /// Alias, macOS app name, Linux command, or `default` for the system handler.
+    browser: Option<String>,
+    /// Full argv with the URL appended; takes precedence over `browser`.
+    command: Option<Vec<String>>,
 }
 
 /// Partial picker theme overrides from global config; unset fields keep defaults.
@@ -48,6 +60,7 @@ struct StyleConfig {
 pub struct PickerConfig {
     pub custom_patterns: Vec<PatternSpec>,
     pub theme: PickerTheme,
+    pub browser: BrowserChoice,
 }
 
 /// Project-local pattern discovery settings from global config.
@@ -105,6 +118,7 @@ pub fn resolve_picker_config(
         }
     };
     let theme = resolve_theme(&global_config.theme);
+    let browser = resolve_browser(&global_config.open_url);
     let custom_patterns = match action {
         PickerAction::Copy => resolve_pattern_specs(global_config, focused_pane_cwd),
         PickerAction::OpenUrl => Vec::new(),
@@ -112,6 +126,22 @@ pub fn resolve_picker_config(
     PickerConfig {
         custom_patterns,
         theme,
+        browser,
+    }
+}
+
+fn resolve_browser(config: &OpenUrlConfig) -> BrowserChoice {
+    if let Some(command) = config.command.as_ref().filter(|argv| !argv.is_empty()) {
+        return BrowserChoice::Command(command.clone());
+    }
+    match config.browser.as_deref().map(str::trim) {
+        None | Some("") => BrowserChoice::PreferChrome,
+        Some(name)
+            if name.eq_ignore_ascii_case("default") || name.eq_ignore_ascii_case("system") =>
+        {
+            BrowserChoice::SystemDefault
+        }
+        Some(name) => BrowserChoice::Named(name.to_string()),
     }
 }
 
@@ -333,6 +363,32 @@ regex = "ABC-[0-9]+"
         assert_eq!(theme.hint.fg, PickerTheme::default().hint.fg);
         assert_eq!(theme.hint.bg, ThemeColor::Ansi(12));
         assert_eq!(resolve_pattern_specs(config, None).len(), 1);
+    }
+
+    #[test]
+    fn open_url_browser_resolution() {
+        let resolve = |toml_text: &str| {
+            let config: GlobalConfigFile = toml::from_str(toml_text).unwrap();
+            resolve_browser(&config.open_url)
+        };
+
+        assert_eq!(resolve(""), BrowserChoice::PreferChrome);
+        assert_eq!(
+            resolve("[open_url]\nbrowser = \"Default\""),
+            BrowserChoice::SystemDefault
+        );
+        assert_eq!(
+            resolve("[open_url]\nbrowser = \"firefox\""),
+            BrowserChoice::Named("firefox".into())
+        );
+        assert_eq!(
+            resolve("[open_url]\nbrowser = \"firefox\"\ncommand = [\"arc\", \"--new\"]"),
+            BrowserChoice::Command(vec!["arc".into(), "--new".into()])
+        );
+        assert_eq!(
+            resolve("[open_url]\ncommand = []"),
+            BrowserChoice::PreferChrome
+        );
     }
 
     #[test]
