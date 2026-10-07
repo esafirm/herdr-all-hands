@@ -7,47 +7,32 @@ use crate::model::{
 use std::collections::HashSet;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-/// How a hinted occurrence is drawn given the hint keys typed so far.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum HintLabel {
-    /// The hint can no longer be selected; draw the occurrence as plain text.
-    Hidden,
-    /// Characters drawn destructively over the match start. Empty when the
-    /// match is too short to hold even the bare hint.
-    Badge(Vec<(char, RenderStyle)>),
-}
-
-/// Builds the badge for `hint` within `available` columns of matched text.
+/// Styled hint characters for `hint`, or `None` when it no longer starts with
+/// the `typed` prefix and should be drawn as plain text.
 ///
-/// Prefers a padded badge (` ab `) when at least one matched character stays
-/// visible after it, falls back to the bare hint, and splits already-typed
-/// characters into [`RenderStyle::HintTyped`].
-fn hint_label(hint: &str, typed: &str, available: usize) -> HintLabel {
+/// Already-typed characters use [`RenderStyle::HintTyped`].
+///
+/// Placement is decided by each render path: hints go into the blank columns
+/// just before a match when there are enough of them, so the match stays fully
+/// readable, and otherwise cover the start of the match.
+fn hint_label(hint: &str, typed: &str) -> Option<Vec<(char, RenderStyle)>> {
     if !hint.starts_with(typed) {
-        return HintLabel::Hidden;
+        return None;
     }
     let typed_count = typed.chars().count();
-    let hint_chars = hint.chars().enumerate().map(|(index, ch)| {
-        let style = if index < typed_count {
-            RenderStyle::HintTyped
-        } else {
-            RenderStyle::Hint
-        };
-        (ch, style)
-    });
-    let hint_len = hint.chars().count();
-
-    let badge = if available > hint_len + 2 {
-        std::iter::once((' ', RenderStyle::Hint))
-            .chain(hint_chars)
-            .chain(std::iter::once((' ', RenderStyle::Hint)))
-            .collect()
-    } else if available >= hint_len {
-        hint_chars.collect()
-    } else {
-        Vec::new()
-    };
-    HintLabel::Badge(badge)
+    Some(
+        hint.chars()
+            .enumerate()
+            .map(|(index, ch)| {
+                let style = if index < typed_count {
+                    RenderStyle::HintTyped
+                } else {
+                    RenderStyle::Hint
+                };
+                (ch, style)
+            })
+            .collect(),
+    )
 }
 
 /// Renders logical pane lines as a fixed-size styled viewport with destructive inline hints.
@@ -110,17 +95,27 @@ pub fn render_visible_inline_hints(
         cells.push(row_cells("", width));
     }
 
+    // Two passes: mark every match first, so hint placement in leading blank
+    // cells can't be overwritten by a later match or land inside one.
+    let mut placements = Vec::new();
     for assignment in assignments.assignments() {
+        let Some(label) = hint_label(&assignment.hint, typed) else {
+            continue;
+        };
         for occurrence in &assignment.occurrences {
-            apply_visible_occurrence(
-                &mut cells,
-                &viewport.rows,
-                &viewport.segments,
-                occurrence,
-                &assignment.hint,
-                typed,
-            );
+            let positions = visible_positions(&viewport.rows, &viewport.segments, occurrence);
+            for &(row, col) in &positions {
+                if let Some(cell) = cells.get_mut(row).and_then(|row| row.get_mut(col)) {
+                    cell.style = RenderStyle::Match;
+                }
+            }
+            if !positions.is_empty() {
+                placements.push((positions, label.clone()));
+            }
         }
+    }
+    for (positions, label) in placements {
+        place_visible_hint(&mut cells, &positions, label);
     }
 
     cells.into_iter().map(cells_to_render_line).collect()
@@ -164,14 +159,12 @@ fn row_cells(row: &str, width: usize) -> Vec<Cell> {
     cells
 }
 
-fn apply_visible_occurrence(
-    cells: &mut [Vec<Cell>],
+/// Maps an occurrence onto the (row, col) cells it covers in the visible viewport.
+fn visible_positions(
     rows: &[String],
     segments: &[LogicalLineVisualSegment],
     occurrence: &MatchSpan,
-    hint: &str,
-    typed: &str,
-) {
+) -> Vec<(usize, usize)> {
     let mut positions = Vec::new();
     for segment in segments
         .iter()
@@ -201,20 +194,37 @@ fn apply_visible_occurrence(
         }
     }
 
-    if positions.is_empty() {
+    positions
+}
+
+/// Writes a hint into the blank cells just left of the match on its first row,
+/// or over the match start when there is no room. Matches shorter than the
+/// hint with no room get no hint.
+fn place_visible_hint(
+    cells: &mut [Vec<Cell>],
+    positions: &[(usize, usize)],
+    label: Vec<(char, RenderStyle)>,
+) {
+    let Some(&(row, col)) = positions.first() else {
         return;
-    }
-    let HintLabel::Badge(badge) = hint_label(hint, typed, positions.len()) else {
+    };
+    let hint_len = label.len();
+    let leading_is_blank = col >= hint_len
+        && cells.get(row).is_some_and(|cells| {
+            cells[col - hint_len..col]
+                .iter()
+                .all(|cell| cell.style == RenderStyle::Unmatched && cell.text == " ")
+        });
+
+    let targets: Vec<(usize, usize)> = if leading_is_blank {
+        (col - hint_len..col).map(|col| (row, col)).collect()
+    } else if positions.len() >= hint_len {
+        positions[..hint_len].to_vec()
+    } else {
         return;
     };
 
-    for &(row, col) in &positions {
-        if let Some(cell) = cells.get_mut(row).and_then(|row| row.get_mut(col)) {
-            cell.style = RenderStyle::Match;
-        }
-    }
-
-    for ((row, col), (ch, style)) in positions.into_iter().zip(badge) {
+    for ((row, col), (ch, style)) in targets.into_iter().zip(label) {
         if let Some(cell) = cells.get_mut(row).and_then(|row| row.get_mut(col)) {
             cell.text = ch.to_string();
             cell.style = style;
@@ -292,7 +302,7 @@ fn is_valid_occurrence(logical_lines: &[String], occurrence: &MatchSpan) -> bool
         && line.is_char_boundary(occurrence.end)
 }
 
-/// Builds styled render lines from logical lines and their matched occurrences, applying destructive hints.
+/// Builds styled render lines from logical lines and their matched occurrences, applying hints.
 fn build_styled_logical_lines(
     logical_lines: &[String],
     occurrences: &[RenderOccurrence],
@@ -312,18 +322,40 @@ fn build_styled_logical_lines(
                 if occurrence.start < cursor {
                     continue;
                 }
+                let matched_text = &line[occurrence.start..occurrence.end];
+                let Some(label) = hint_label(&occurrence.hint, typed) else {
+                    push_span(
+                        &mut spans,
+                        &line[cursor..occurrence.end],
+                        RenderStyle::Unmatched,
+                    );
+                    cursor = occurrence.end;
+                    continue;
+                };
 
-                push_span(
-                    &mut spans,
-                    &line[cursor..occurrence.start],
-                    RenderStyle::Unmatched,
-                );
-                push_destructive_hint_spans(
-                    &mut spans,
-                    &line[occurrence.start..occurrence.end],
-                    occurrence,
-                    typed,
-                );
+                // Spaces are single-byte, so `hint_start` is a char boundary when blank.
+                let hint_start = occurrence.start.checked_sub(label.len());
+                match hint_start.filter(|&start| {
+                    start >= cursor && line[start..occurrence.start].bytes().all(|b| b == b' ')
+                }) {
+                    Some(hint_start) => {
+                        push_span(
+                            &mut spans,
+                            &line[cursor..hint_start],
+                            RenderStyle::Unmatched,
+                        );
+                        push_label(&mut spans, label);
+                        push_span(&mut spans, matched_text, RenderStyle::Match);
+                    }
+                    None => {
+                        push_span(
+                            &mut spans,
+                            &line[cursor..occurrence.start],
+                            RenderStyle::Unmatched,
+                        );
+                        push_hint_over_match(&mut spans, matched_text, label);
+                    }
+                }
                 cursor = occurrence.end;
             }
 
@@ -333,28 +365,24 @@ fn build_styled_logical_lines(
         .collect()
 }
 
-/// Pushes spans for a matched occurrence, replacing the match prefix with its hint badge.
-fn push_destructive_hint_spans(
+fn push_label(spans: &mut Vec<RenderSpan>, label: Vec<(char, RenderStyle)>) {
+    for (ch, style) in label {
+        push_char(spans, ch, style);
+    }
+}
+
+/// Pushes a match with its prefix replaced by the hint, or the plain match when
+/// it is shorter than the hint.
+fn push_hint_over_match(
     spans: &mut Vec<RenderSpan>,
     matched_text: &str,
-    occurrence: &RenderOccurrence,
-    typed: &str,
+    label: Vec<(char, RenderStyle)>,
 ) {
-    let badge = match hint_label(&occurrence.hint, typed, matched_text.chars().count()) {
-        HintLabel::Hidden => {
-            push_span(spans, matched_text, RenderStyle::Unmatched);
-            return;
-        }
-        HintLabel::Badge(badge) => badge,
-    };
-    let Some(remainder_start) = byte_index_after_chars(matched_text, badge.len()) else {
+    let Some(remainder_start) = byte_index_after_chars(matched_text, label.len()) else {
         push_span(spans, matched_text, RenderStyle::Match);
         return;
     };
-
-    for (ch, style) in badge {
-        push_char(spans, ch, style);
-    }
+    push_label(spans, label);
     push_span(spans, &matched_text[remainder_start..], RenderStyle::Match);
 }
 
@@ -640,8 +668,8 @@ mod tests {
             &lines,
             &[
                 &[
-                    (RenderStyle::Hint, " a "),
-                    (RenderStyle::Match, "ps://example.com"),
+                    (RenderStyle::Hint, "a"),
+                    (RenderStyle::Match, "ttps://example.com"),
                     (RenderStyle::Unmatched, "           "),
                 ],
                 &[(RenderStyle::Unmatched, "                              ")],
@@ -668,9 +696,9 @@ mod tests {
         assert_rows(
             &lines,
             &[&[
-                (RenderStyle::Unmatched, "界 "),
-                (RenderStyle::Hint, " a "),
-                (RenderStyle::Match, "ps://example.com"),
+                (RenderStyle::Unmatched, "界"),
+                (RenderStyle::Hint, "a"),
+                (RenderStyle::Match, "https://example.com"),
                 (RenderStyle::Unmatched, "        "),
             ]],
         );
@@ -690,7 +718,7 @@ mod tests {
         assert_rows(
             &lines,
             &[
-                &[(RenderStyle::Hint, " a "), (RenderStyle::Match, "ps://exa")],
+                &[(RenderStyle::Hint, "a"), (RenderStyle::Match, "ttps://exa")],
                 &[
                     (RenderStyle::Match, "mple.com"),
                     (RenderStyle::Unmatched, "   "),
@@ -714,7 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn destructive_hint_replaces_match_prefix() {
+    fn hint_uses_blank_column_before_match() {
         let lines = vec!["foo bar baz".to_string()];
         let assignments =
             HintAssignments::new(vec![assignment("a", "bar", vec![span("bar", 0, 4)])]);
@@ -724,9 +752,9 @@ mod tests {
         assert_rows(
             &rows,
             &[&[
-                (RenderStyle::Unmatched, "foo "),
+                (RenderStyle::Unmatched, "foo"),
                 (RenderStyle::Hint, "a"),
-                (RenderStyle::Match, "ar"),
+                (RenderStyle::Match, "bar"),
                 (RenderStyle::Unmatched, " baz"),
             ]],
         );
@@ -744,9 +772,9 @@ mod tests {
             &[&[
                 (RenderStyle::Hint, "a"),
                 (RenderStyle::Match, "oo"),
-                (RenderStyle::Unmatched, " then "),
+                (RenderStyle::Unmatched, " then"),
                 (RenderStyle::Hint, "a"),
-                (RenderStyle::Match, "oo"),
+                (RenderStyle::Match, "foo"),
             ]],
         );
     }
@@ -779,12 +807,12 @@ mod tests {
         assert_rows(
             &rows,
             &[
-                &[(RenderStyle::Unmatched, "xx "), (RenderStyle::Hint, " a")],
                 &[
-                    (RenderStyle::Hint, " "),
-                    (RenderStyle::Match, "def"),
-                    (RenderStyle::Unmatched, " "),
+                    (RenderStyle::Unmatched, "xx"),
+                    (RenderStyle::Hint, "a"),
+                    (RenderStyle::Match, "ab"),
                 ],
+                &[(RenderStyle::Match, "cdef"), (RenderStyle::Unmatched, " ")],
                 &[(RenderStyle::Unmatched, "yy   ")],
             ],
         );
@@ -884,10 +912,9 @@ mod tests {
         assert_rows(
             &rows,
             &[&[
-                (RenderStyle::Hint, " "),
                 (RenderStyle::HintTyped, "a"),
-                (RenderStyle::Hint, "s "),
-                (RenderStyle::Match, "s://one.dev"),
+                (RenderStyle::Hint, "s"),
+                (RenderStyle::Match, "tps://one.dev"),
                 (RenderStyle::Unmatched, " https://two.dev"),
             ]],
         );
@@ -941,6 +968,71 @@ mod tests {
         let mut lines = vec![hint_row];
         overlay_status_line(&mut lines, "ok", 4);
         assert_eq!(lines[0].spans[0].style, RenderStyle::Hint);
+    }
+
+    #[test]
+    fn short_match_gets_hint_in_leading_blanks() {
+        let lines = vec!["x  a y".to_string()];
+        let assignments = HintAssignments::new(vec![assignment("as", "a", vec![span("a", 0, 3)])]);
+
+        let rows = render_inline_hints(&lines, &assignments, "", 6, 1);
+
+        assert_rows(
+            &rows,
+            &[&[
+                (RenderStyle::Unmatched, "x"),
+                (RenderStyle::Hint, "as"),
+                (RenderStyle::Match, "a"),
+                (RenderStyle::Unmatched, " y"),
+            ]],
+        );
+    }
+
+    #[test]
+    fn leading_blank_owned_by_previous_match_is_not_reused() {
+        // Two-char hints need two blanks; one separating space falls back to covering.
+        let lines = vec!["aaa bbb".to_string()];
+        let assignments = HintAssignments::new(vec![
+            assignment("as", "aaa", vec![span("aaa", 0, 0)]),
+            assignment("sd", "bbb", vec![span("bbb", 0, 4)]),
+        ]);
+
+        let rows = render_inline_hints(&lines, &assignments, "", 7, 1);
+
+        assert_rows(
+            &rows,
+            &[&[
+                (RenderStyle::Hint, "as"),
+                (RenderStyle::Match, "a"),
+                (RenderStyle::Unmatched, " "),
+                (RenderStyle::Hint, "sd"),
+                (RenderStyle::Match, "b"),
+            ]],
+        );
+    }
+
+    #[test]
+    fn visible_render_places_hint_in_leading_blanks_keeping_url_readable() {
+        let row = "see  https://a.dev ok";
+        let viewport = crate::viewport::map_visible_viewport(vec![row.to_string()], 21, 1);
+        let assignments = HintAssignments::new(vec![assignment(
+            "as",
+            "https://a.dev",
+            vec![span("https://a.dev", 0, 5)],
+        )]);
+
+        let lines = render_visible_inline_hints(&viewport, &assignments, "a", 21, 1);
+
+        assert_rows(
+            &lines,
+            &[&[
+                (RenderStyle::Unmatched, "see"),
+                (RenderStyle::HintTyped, "a"),
+                (RenderStyle::Hint, "s"),
+                (RenderStyle::Match, "https://a.dev"),
+                (RenderStyle::Unmatched, " ok"),
+            ]],
+        );
     }
 
     #[test]

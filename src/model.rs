@@ -265,7 +265,7 @@ pub struct HintAssignment {
 pub enum RenderStyle {
     Unmatched,
     Match,
-    /// Hint badge characters still to be typed, including badge padding.
+    /// Hint characters still to be typed.
     Hint,
     /// Hint characters the user has already typed.
     HintTyped,

@@ -132,7 +132,7 @@ pub struct PickerTheme {
     /// Matched text following its hint.
     #[serde(rename = "match")]
     pub matched: TextStyle,
-    /// Hint badge characters still to be typed to select a match.
+    /// Hint characters still to be typed to select a match.
     pub hint: TextStyle,
     /// Hint characters already typed; by default greyed out on the hint background.
     pub hint_typed: TextStyle,
@@ -141,7 +141,7 @@ pub struct PickerTheme {
 }
 
 impl PickerTheme {
-    /// Default `hint_typed` style, derived from the hint so the badge keeps its background.
+    /// Default `hint_typed` style, derived from the hint so it keeps the hint background.
     pub fn default_hint_typed(hint: &TextStyle) -> TextStyle {
         TextStyle {
             fg: ThemeColor::Ansi(8),

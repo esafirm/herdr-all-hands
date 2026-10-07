@@ -236,7 +236,7 @@ mod tests {
         assert!(view.lines[0]
             .spans
             .iter()
-            .any(|span| span.style == RenderStyle::Hint && span.text == " a "));
+            .any(|span| span.style == RenderStyle::Hint && span.text == "a"));
     }
 
     #[test]
