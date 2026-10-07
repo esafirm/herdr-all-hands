@@ -260,11 +260,17 @@ pub struct HintAssignment {
     pub occurrences: Vec<MatchSpan>,
 }
 
+/// Visual role of rendered picker text; mapped to colors by the theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RenderStyle {
     Unmatched,
     Match,
+    /// Hint badge characters still to be typed, including badge padding.
     Hint,
+    /// Hint characters the user has already typed.
+    HintTyped,
+    /// Picker status line.
+    Status,
 }
 
 /// A contiguous span of text to render in the picker, with a single style.

@@ -8,7 +8,7 @@ use crate::picker::input::{
     RawModeGuard,
 };
 use crate::picker::open_url::open_selected_url;
-use crate::picker::render::build_picker_view;
+use crate::picker::render::{build_picker_view, render_picker_lines};
 use crate::renderer::terminal;
 use crate::url_opener::{SystemUrlOpener, UrlOpener};
 use anyhow::{anyhow, Result};
@@ -50,8 +50,18 @@ where
     let mut input_state = InputState::new(width);
 
     loop {
+        let typed_before = input_state.typed().to_string();
         match input_state.push(input.read_event()?, &valid_hints) {
-            InputDecision::Continue | InputDecision::InvalidHint => continue,
+            InputDecision::Continue | InputDecision::InvalidHint => {
+                // Redraw only when the prefix changed, to narrow or reset visible hints.
+                if input_state.typed() != typed_before {
+                    let lines =
+                        render_picker_lines(snapshot, &view.assignments, input_state.typed());
+                    terminal::emit_render_lines(output, &lines, &snapshot.theme)?;
+                    output.flush()?;
+                }
+                continue;
+            }
             InputDecision::Cancel => return Ok(PickerOutcome::Cancelled),
             InputDecision::CopyHint(hint) => {
                 let text = view
@@ -308,6 +318,38 @@ mod tests {
             }
         );
         assert_eq!(clipboard.copied.borrow().len(), 1);
+    }
+
+    #[test]
+    fn partial_hint_redraws_with_typed_prefix() {
+        let urls = (0..30)
+            .map(|index| format!("https://host{index}.dev"))
+            .collect::<Vec<_>>();
+        let mut input = FakeInput::new(vec![
+            PickerInputEvent::Char('a'),
+            PickerInputEvent::Char('a'),
+        ]);
+        let clipboard = FakeClipboard::default();
+        let mut output = Vec::new();
+
+        let outcome = run_picker_with(
+            &snapshot(urls.iter().map(String::as_str).collect(), 40, 31),
+            &mut input,
+            &clipboard,
+            &FakeUrlOpener::default(),
+            &mut output,
+        )
+        .unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("keys: __"));
+        assert!(output.contains("keys: a_"));
+        assert_eq!(
+            outcome,
+            PickerOutcome::Copied {
+                text: "https://host0.dev".to_string()
+            }
+        );
     }
 
     #[test]

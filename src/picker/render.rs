@@ -5,7 +5,9 @@ use crate::model::{
 };
 use crate::patterns::{find_matches, find_openable_urls};
 use crate::picker::input::CursorGuard;
-use crate::renderer::{render_inline_hints, render_visible_inline_hints, terminal};
+use crate::renderer::{
+    overlay_status_line, render_inline_hints, render_visible_inline_hints, terminal,
+};
 use anyhow::{Context, Result};
 
 /// Rendered picker state and hint assignments derived from a captured pane snapshot.
@@ -47,34 +49,63 @@ pub fn build_picker_view(snapshot: &PickerSnapshot) -> PickerView {
         PickerAction::OpenUrl => find_openable_urls(logical_lines),
     };
     let assignments = assign_hints(matches.clone());
-
-    let lines = if assignments.is_empty() {
-        no_matches_view(
-            snapshot.action,
-            snapshot.source.target_content_width,
-            snapshot.source.target_content_height,
-        )
-    } else if let Some(viewport) = &snapshot.source.visible_viewport {
-        render_visible_inline_hints(
-            viewport,
-            &assignments,
-            snapshot.source.target_content_width,
-            snapshot.source.target_content_height,
-        )
-    } else {
-        render_inline_hints(
-            &snapshot.source.logical_lines,
-            &assignments,
-            snapshot.source.target_content_width,
-            snapshot.source.target_content_height,
-        )
-    };
+    let lines = render_picker_lines(snapshot, &assignments, "");
 
     PickerView {
         lines,
         assignments,
         match_count: matches.len(),
     }
+}
+
+/// Renders the picker viewport for the hint prefix typed so far, including the status line.
+pub fn render_picker_lines(
+    snapshot: &PickerSnapshot,
+    assignments: &HintAssignments,
+    typed: &str,
+) -> Vec<RenderLine> {
+    let width = snapshot.source.target_content_width;
+    let height = snapshot.source.target_content_height;
+    if assignments.is_empty() {
+        return no_matches_view(snapshot.action, width, height);
+    }
+
+    let mut lines = if let Some(viewport) = &snapshot.source.visible_viewport {
+        render_visible_inline_hints(viewport, assignments, typed, width, height)
+    } else {
+        render_inline_hints(
+            &snapshot.source.logical_lines,
+            assignments,
+            typed,
+            width,
+            height,
+        )
+    };
+    overlay_status_line(
+        &mut lines,
+        &status_text(snapshot.action, assignments, typed),
+        width,
+    );
+    lines
+}
+
+/// Status line text, e.g. ` PLUCK │ 12 targets │ keys: a_ │ Esc cancel `.
+fn status_text(action: PickerAction, assignments: &HintAssignments, typed: &str) -> String {
+    let mode = match action {
+        PickerAction::Copy => "PLUCK",
+        PickerAction::OpenUrl => "OPEN URL",
+    };
+    let width = assignments.width().unwrap_or(0);
+    let remaining = width.saturating_sub(typed.chars().count());
+    let targets = assignments
+        .valid_hints()
+        .filter(|hint| hint.starts_with(typed))
+        .count();
+    let noun = if targets == 1 { "target" } else { "targets" };
+    format!(
+        " {mode} │ {targets} {noun} │ keys: {typed}{} │ Esc cancel ",
+        "_".repeat(remaining)
+    )
 }
 
 /// Builds the production readonly picker view from captured pane text.
@@ -205,7 +236,33 @@ mod tests {
         assert!(view.lines[0]
             .spans
             .iter()
-            .any(|span| span.style == RenderStyle::Hint && span.text == "a"));
+            .any(|span| span.style == RenderStyle::Hint && span.text == " a "));
+    }
+
+    #[test]
+    fn status_line_reports_mode_targets_and_typed_keys() {
+        let snapshot = snapshot(vec!["open https://example.com/path", ""], 60, 2);
+        let view = build_picker_view(&snapshot);
+
+        let status = &view.lines[1].spans[0];
+        assert_eq!(status.style, RenderStyle::Status);
+        assert!(status
+            .text
+            .starts_with(" PLUCK │ 1 target │ keys: _ │ Esc cancel"));
+        assert_eq!(status.text.chars().count(), 60);
+    }
+
+    #[test]
+    fn status_text_shows_typed_prefix_and_narrowed_count() {
+        let urls = (0..30)
+            .map(|index| format!("https://host{index}.dev"))
+            .collect::<Vec<_>>();
+        let snapshot = snapshot(urls.iter().map(String::as_str).collect(), 40, 30);
+        let view = build_picker_view(&snapshot);
+
+        let text = status_text(PickerAction::Copy, &view.assignments, "a");
+
+        assert_eq!(text, " PLUCK │ 26 targets │ keys: a_ │ Esc cancel ");
     }
 
     #[test]

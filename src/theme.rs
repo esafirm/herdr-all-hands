@@ -132,12 +132,34 @@ pub struct PickerTheme {
     /// Matched text following its hint.
     #[serde(rename = "match")]
     pub matched: TextStyle,
-    /// Hint label characters typed to select a match.
+    /// Hint badge characters still to be typed to select a match.
     pub hint: TextStyle,
+    /// Hint characters already typed; by default greyed out on the hint background.
+    pub hint_typed: TextStyle,
+    /// Status line showing the mode, typed keys and how to cancel.
+    pub status: TextStyle,
+}
+
+impl PickerTheme {
+    /// Default `hint_typed` style, derived from the hint so the badge keeps its background.
+    pub fn default_hint_typed(hint: &TextStyle) -> TextStyle {
+        TextStyle {
+            fg: ThemeColor::Ansi(8),
+            bg: hint.bg,
+            bold: false,
+            dim: false,
+        }
+    }
 }
 
 impl Default for PickerTheme {
     fn default() -> Self {
+        let hint = TextStyle {
+            fg: ThemeColor::Ansi(0),
+            bg: ThemeColor::Ansi(14),
+            bold: true,
+            dim: false,
+        };
         Self {
             unmatched: TextStyle {
                 fg: ThemeColor::Ansi(8),
@@ -151,10 +173,12 @@ impl Default for PickerTheme {
                 bold: false,
                 dim: false,
             },
-            hint: TextStyle {
+            hint_typed: Self::default_hint_typed(&hint),
+            hint,
+            status: TextStyle {
                 fg: ThemeColor::Ansi(0),
-                bg: ThemeColor::Ansi(14),
-                bold: true,
+                bg: ThemeColor::Ansi(7),
+                bold: false,
                 dim: false,
             },
         }

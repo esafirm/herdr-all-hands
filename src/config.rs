@@ -43,6 +43,10 @@ struct ThemeConfig {
     matched: StyleConfig,
     #[serde(default)]
     hint: StyleConfig,
+    #[serde(default)]
+    hint_typed: StyleConfig,
+    #[serde(default)]
+    status: StyleConfig,
 }
 
 /// Overrides for one picker text role. Colors stay strings so one bad value
@@ -182,10 +186,18 @@ fn resolve_pattern_specs(
 
 fn resolve_theme(config: &ThemeConfig) -> PickerTheme {
     let defaults = PickerTheme::default();
+    let hint = apply_style(defaults.hint, &config.hint, "hint");
     PickerTheme {
         unmatched: apply_style(defaults.unmatched, &config.unmatched, "unmatched"),
         matched: apply_style(defaults.matched, &config.matched, "match"),
-        hint: apply_style(defaults.hint, &config.hint, "hint"),
+        // Derive from the resolved hint so a custom hint background carries over.
+        hint_typed: apply_style(
+            PickerTheme::default_hint_typed(&hint),
+            &config.hint_typed,
+            "hint_typed",
+        ),
+        hint,
+        status: apply_style(defaults.status, &config.status, "status"),
     }
 }
 
@@ -342,6 +354,8 @@ fg = "dark-green"
         assert_eq!(theme.hint.fg, defaults.hint.fg);
         assert_eq!(theme.matched.fg, ThemeColor::Ansi(2));
         assert_eq!(theme.unmatched, defaults.unmatched);
+        assert_eq!(theme.hint_typed.bg, theme.hint.bg);
+        assert_eq!(theme.status, defaults.status);
     }
 
     #[test]

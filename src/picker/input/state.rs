@@ -24,6 +24,13 @@ impl InputState {
         }
     }
 
+    /// Hint characters typed so far toward the current selection.
+    pub(crate) fn typed(&self) -> &str {
+        &self.buffer
+    }
+
+    /// Feeds one key. A partial prefix that no valid hint starts with is
+    /// rejected immediately rather than after the full hint width.
     pub(crate) fn push(&mut self, event: PickerInputEvent, valid_hints: &[&str]) -> InputDecision {
         match event {
             PickerInputEvent::Escape | PickerInputEvent::CtrlC => InputDecision::Cancel,
@@ -35,7 +42,14 @@ impl InputState {
 
                 self.buffer.push(ch);
                 if self.buffer.chars().count() < self.width {
-                    return InputDecision::Continue;
+                    if valid_hints
+                        .iter()
+                        .any(|hint| hint.starts_with(&self.buffer))
+                    {
+                        return InputDecision::Continue;
+                    }
+                    self.buffer.clear();
+                    return InputDecision::InvalidHint;
                 }
 
                 let entered = std::mem::take(&mut self.buffer);
@@ -82,21 +96,34 @@ mod tests {
         let mut state = InputState::new(2);
 
         assert_eq!(
-            state.push(PickerInputEvent::Char('a'), &["sd"]),
+            state.push(PickerInputEvent::Char('s'), &["sd"]),
             InputDecision::Continue
         );
         assert_eq!(
             state.push(PickerInputEvent::Char('x'), &["sd"]),
             InputDecision::InvalidHint
         );
+        assert_eq!(state.typed(), "");
         assert_eq!(
             state.push(PickerInputEvent::Char('s'), &["sd"]),
             InputDecision::Continue
         );
+        assert_eq!(state.typed(), "s");
         assert_eq!(
             state.push(PickerInputEvent::Char('d'), &["sd"]),
             InputDecision::CopyHint("sd".to_string())
         );
+    }
+
+    #[test]
+    fn unmatched_first_key_resets_immediately() {
+        let mut state = InputState::new(2);
+
+        assert_eq!(
+            state.push(PickerInputEvent::Char('a'), &["sd"]),
+            InputDecision::InvalidHint
+        );
+        assert_eq!(state.typed(), "");
     }
 
     #[test]

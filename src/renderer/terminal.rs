@@ -42,6 +42,8 @@ fn theme_style(theme: &PickerTheme, style: RenderStyle) -> &TextStyle {
         RenderStyle::Unmatched => &theme.unmatched,
         RenderStyle::Match => &theme.matched,
         RenderStyle::Hint => &theme.hint,
+        RenderStyle::HintTyped => &theme.hint_typed,
+        RenderStyle::Status => &theme.status,
     }
 }
 

@@ -179,7 +179,21 @@ When identical text appears more than once, every visible occurrence shows the s
 
 ## Theme
 
-Picker colors can be customized in the same global `config.toml`. There are three roles: `hint` (the typed label), `match` (the rest of the matched text), and `unmatched` (all other pane text). Every field is optional; unset fields keep the defaults shown here:
+Each hint is drawn as a padded badge (` a `) over the start of its match. Short matches fall back to the bare hint so at least one matched character stays visible. A status line shows the mode, how many targets remain, the keys typed so far, and how to cancel. It uses the bottom row, or the top row when the bottom row holds a hint.
+
+With two-letter hints, the picker redraws after the first key. Hints that no longer match turn back into plain text, and the typed letter is greyed out in the remaining badges. A first key that no hint starts with resets immediately.
+
+Picker colors can be customized in the same global `config.toml`. The roles are:
+
+| Role | What it styles |
+|---|---|
+| `hint` | The badge and the keys still to press |
+| `hint_typed` | Keys already typed (defaults to dark grey on the `hint` background) |
+| `match` | The rest of the matched text |
+| `unmatched` | All other pane text |
+| `status` | The status line |
+
+Every field is optional; unset fields keep the defaults shown here:
 
 ```toml
 [theme.hint]
@@ -188,6 +202,10 @@ bg = "cyan"
 bold = true
 dim = false
 
+[theme.hint_typed]
+fg = "dark_grey"
+# bg defaults to the hint background
+
 [theme.match]
 fg = "yellow"
 bg = "reset"
@@ -195,6 +213,10 @@ bg = "reset"
 [theme.unmatched]
 fg = "dark_grey"
 dim = true
+
+[theme.status]
+fg = "black"
+bg = "grey"
 ```
 
 Colors accept:
