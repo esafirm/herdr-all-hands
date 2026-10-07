@@ -39,7 +39,7 @@ where
     W: Write,
 {
     let view = build_picker_view(snapshot);
-    terminal::emit_render_lines(output, &view.lines)?;
+    terminal::emit_render_lines(output, &view.lines, &snapshot.theme)?;
     output.flush()?;
 
     let Some(width) = view.assignments.width() else {
@@ -71,7 +71,7 @@ where
                     }
                 };
                 if let Err(error) = outcome {
-                    emit_selection_failure(output, snapshot.action, text, &error)?;
+                    emit_selection_failure(output, snapshot, text, &error)?;
                     return Err(error);
                 }
                 return outcome;
@@ -94,11 +94,11 @@ fn run_no_match_input(input: &mut impl InputSource) -> Result<PickerOutcome> {
 
 fn emit_selection_failure(
     output: &mut impl Write,
-    action: PickerAction,
+    snapshot: &PickerSnapshot,
     text: &str,
     error: &anyhow::Error,
 ) -> Result<()> {
-    let verb = match action {
+    let verb = match snapshot.action {
         PickerAction::Copy => "copy",
         PickerAction::OpenUrl => "open",
     };
@@ -109,7 +109,7 @@ fn emit_selection_failure(
             style: RenderStyle::Unmatched,
         }],
     }];
-    terminal::emit_render_lines(output, &lines)?;
+    terminal::emit_render_lines(output, &lines, &snapshot.theme)?;
     output.flush()?;
     Ok(())
 }
@@ -201,6 +201,7 @@ mod tests {
             },
             action: PickerAction::Copy,
             custom_patterns: Vec::new(),
+            theme: Default::default(),
         }
     }
 

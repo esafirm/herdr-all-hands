@@ -1,6 +1,7 @@
+use crate::config::PickerConfig;
 use crate::herdr::layout::{derive_source_geometry, derive_source_pane_geometries, LayoutSnapshot};
 use crate::model::{
-    PaneId, PaneTextCaptureMode, PatternSpec, PickerAction, PickerReturnContext, PickerSnapshot,
+    PaneId, PaneTextCaptureMode, PickerAction, PickerReturnContext, PickerSnapshot,
     SourcePaneSnapshot, VisibleViewport,
 };
 use anyhow::{bail, Context, Result};
@@ -87,7 +88,7 @@ pub fn build_source_snapshot(
     visible_viewport: Option<VisibleViewport>,
     session: PickerReturnContext,
     action: PickerAction,
-    custom_patterns: Vec<PatternSpec>,
+    config: PickerConfig,
 ) -> Result<PickerSnapshot> {
     let source_tab_id = layout
         .tab_id
@@ -116,7 +117,8 @@ pub fn build_source_snapshot(
         },
         session,
         action,
-        custom_patterns,
+        custom_patterns: config.custom_patterns,
+        theme: config.theme,
     })
 }
 

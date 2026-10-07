@@ -1,4 +1,5 @@
 use crate::model::{RenderLine, RenderStyle};
+use crate::theme::{PickerTheme, TextStyle, ThemeColor};
 use anyhow::Result;
 use crossterm::{
     cursor::MoveTo,
@@ -10,14 +11,18 @@ use crossterm::{
 };
 use std::io::Write;
 
-/// Emits abstract picker render lines to a terminal writer using v1 styling.
-pub fn emit_render_lines(writer: &mut impl Write, lines: &[RenderLine]) -> Result<()> {
+/// Emits abstract picker render lines to a terminal writer using the given theme.
+pub fn emit_render_lines(
+    writer: &mut impl Write,
+    lines: &[RenderLine],
+    theme: &PickerTheme,
+) -> Result<()> {
     queue!(writer, Clear(ClearType::All))?;
 
     for (line_index, line) in lines.iter().enumerate() {
         queue!(writer, MoveTo(0, line_index as u16))?;
         for span in &line.spans {
-            queue_style(writer, span.style)?;
+            queue_style(writer, theme_style(theme, span.style))?;
             queue!(writer, Print(&span.text))?;
         }
     }
@@ -32,27 +37,39 @@ pub fn emit_render_lines(writer: &mut impl Write, lines: &[RenderLine]) -> Resul
     Ok(())
 }
 
-fn queue_style(writer: &mut impl Write, style: RenderStyle) -> Result<()> {
+fn theme_style(theme: &PickerTheme, style: RenderStyle) -> &TextStyle {
     match style {
-        RenderStyle::Unmatched => queue!(
-            writer,
-            SetForegroundColor(Color::DarkGrey),
-            SetAttribute(Attribute::Dim)
-        )?,
-        RenderStyle::Match => queue!(
-            writer,
-            SetAttribute(Attribute::Reset),
-            SetForegroundColor(Color::Yellow)
-        )?,
-        RenderStyle::Hint => queue!(
-            writer,
-            SetAttribute(Attribute::Reset),
-            SetForegroundColor(Color::Black),
-            SetBackgroundColor(Color::Cyan),
-            SetAttribute(Attribute::Bold)
-        )?,
+        RenderStyle::Unmatched => &theme.unmatched,
+        RenderStyle::Match => &theme.matched,
+        RenderStyle::Hint => &theme.hint,
+    }
+}
+
+/// Resets all attributes, then applies the style so no state leaks between spans.
+fn queue_style(writer: &mut impl Write, style: &TextStyle) -> Result<()> {
+    queue!(writer, SetAttribute(Attribute::Reset))?;
+    if let Some(color) = to_crossterm(style.fg) {
+        queue!(writer, SetForegroundColor(color))?;
+    }
+    if let Some(color) = to_crossterm(style.bg) {
+        queue!(writer, SetBackgroundColor(color))?;
+    }
+    if style.bold {
+        queue!(writer, SetAttribute(Attribute::Bold))?;
+    }
+    if style.dim {
+        queue!(writer, SetAttribute(Attribute::Dim))?;
     }
     Ok(())
+}
+
+/// Returns `None` for the terminal default, which the preceding reset already restores.
+fn to_crossterm(color: ThemeColor) -> Option<Color> {
+    match color {
+        ThemeColor::Reset => None,
+        ThemeColor::Ansi(index) => Some(Color::AnsiValue(index)),
+        ThemeColor::Rgb { r, g, b } => Some(Color::Rgb { r, g, b }),
+    }
 }
 
 #[cfg(test)]
@@ -80,7 +97,7 @@ mod tests {
         }];
         let mut output = Vec::new();
 
-        emit_render_lines(&mut output, &lines).unwrap();
+        emit_render_lines(&mut output, &lines, &PickerTheme::default()).unwrap();
         let output = String::from_utf8(output).unwrap();
 
         assert!(output.starts_with("\u{1b}[2J\u{1b}[1;1H"));
@@ -110,12 +127,39 @@ mod tests {
         ];
         let mut output = Vec::new();
 
-        emit_render_lines(&mut output, &lines).unwrap();
+        emit_render_lines(&mut output, &lines, &PickerTheme::default()).unwrap();
         let output = String::from_utf8(output).unwrap();
 
         assert!(output.contains("\u{1b}[1;1H"));
         assert!(output.contains("\u{1b}[2;1H"));
         assert!(!output.contains("\r\n"));
         assert!(output.ends_with("\u{1b}[1;1H\u{1b}[0m\u{1b}[0m"));
+    }
+
+    #[test]
+    fn terminal_emission_uses_custom_theme() {
+        let lines = vec![RenderLine {
+            spans: vec![RenderSpan {
+                text: "a".to_string(),
+                style: RenderStyle::Hint,
+            }],
+        }];
+        let theme = PickerTheme {
+            hint: TextStyle {
+                fg: ThemeColor::Rgb { r: 1, g: 2, b: 3 },
+                bg: ThemeColor::Reset,
+                bold: false,
+                dim: false,
+            },
+            ..PickerTheme::default()
+        };
+        let mut output = Vec::new();
+
+        emit_render_lines(&mut output, &lines, &theme).unwrap();
+        let output = String::from_utf8(output).unwrap();
+
+        assert!(output.contains("\u{1b}[38;2;1;2;3m"));
+        assert!(!output.contains("\u{1b}[48;"));
+        assert!(!output.contains("\u{1b}[1m"));
     }
 }

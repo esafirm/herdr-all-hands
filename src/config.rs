@@ -1,5 +1,6 @@
-use crate::model::PatternSpec;
+use crate::model::{PatternSpec, PickerAction};
 use crate::patterns::CustomPatternDefinition;
+use crate::theme::{PickerTheme, TextStyle, ThemeColor};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,36 @@ struct GlobalConfigFile {
     project: ProjectConfig,
     #[serde(default)]
     patterns: Vec<PatternConfigEntry>,
+    #[serde(default)]
+    theme: ThemeConfig,
+}
+
+/// Partial picker theme overrides from global config; unset fields keep defaults.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+struct ThemeConfig {
+    #[serde(default)]
+    unmatched: StyleConfig,
+    #[serde(default, rename = "match")]
+    matched: StyleConfig,
+    #[serde(default)]
+    hint: StyleConfig,
+}
+
+/// Overrides for one picker text role. Colors stay strings so one bad value
+/// only falls back that field instead of failing the whole config file.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+struct StyleConfig {
+    fg: Option<String>,
+    bg: Option<String>,
+    bold: Option<bool>,
+    dim: Option<bool>,
+}
+
+/// Global config values resolved before the picker pane launches.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PickerConfig {
+    pub custom_patterns: Vec<PatternSpec>,
+    pub theme: PickerTheme,
 }
 
 /// Project-local pattern discovery settings from global config.
@@ -58,14 +89,29 @@ fn default_project_pattern_files() -> Vec<String> {
     vec![DEFAULT_PROJECT_CONFIG_FILE.to_string()]
 }
 
-/// Resolves picker pattern specs before launching the temporary picker pane.
-pub fn resolve_pattern_specs(focused_pane_cwd: Option<&Path>) -> Vec<PatternSpec> {
-    match try_resolve_pattern_specs(focused_pane_cwd) {
-        Ok(patterns) => patterns,
+/// Resolves custom patterns and theme before launching the temporary picker pane.
+///
+/// Custom patterns only apply to the copy action; URL opening uses built-in URL
+/// matching. An unreadable global config falls back to defaults.
+pub fn resolve_picker_config(
+    action: PickerAction,
+    focused_pane_cwd: Option<&Path>,
+) -> PickerConfig {
+    let global_config = match load_global_config() {
+        Ok(config) => config,
         Err(error) => {
-            eprintln!("Herdr Pluck: failed to load custom patterns: {error:#}");
-            Vec::new()
+            eprintln!("Herdr Pluck: failed to load config: {error:#}");
+            return PickerConfig::default();
         }
+    };
+    let theme = resolve_theme(&global_config.theme);
+    let custom_patterns = match action {
+        PickerAction::Copy => resolve_pattern_specs(global_config, focused_pane_cwd),
+        PickerAction::OpenUrl => Vec::new(),
+    };
+    PickerConfig {
+        custom_patterns,
+        theme,
     }
 }
 
@@ -86,8 +132,10 @@ pub fn compile_pattern_specs(specs: &[PatternSpec]) -> Vec<CustomPatternDefiniti
         .collect()
 }
 
-fn try_resolve_pattern_specs(focused_pane_cwd: Option<&Path>) -> Result<Vec<PatternSpec>> {
-    let global_config = load_global_config()?;
+fn resolve_pattern_specs(
+    global_config: GlobalConfigFile,
+    focused_pane_cwd: Option<&Path>,
+) -> Vec<PatternSpec> {
     let mut specs = Vec::new();
 
     if global_config.project.patterns {
@@ -99,15 +147,38 @@ fn try_resolve_pattern_specs(focused_pane_cwd: Option<&Path>) -> Result<Vec<Patt
         }
     }
     specs.extend(entries_to_specs(global_config.patterns));
-    Ok(specs)
+    specs
+}
+
+fn resolve_theme(config: &ThemeConfig) -> PickerTheme {
+    let defaults = PickerTheme::default();
+    PickerTheme {
+        unmatched: apply_style(defaults.unmatched, &config.unmatched, "unmatched"),
+        matched: apply_style(defaults.matched, &config.matched, "match"),
+        hint: apply_style(defaults.hint, &config.hint, "hint"),
+    }
+}
+
+/// Overlays configured fields onto a default style, warning about invalid colors.
+fn apply_style(base: TextStyle, config: &StyleConfig, role: &str) -> TextStyle {
+    let color = |value: &Option<String>, field: &str, default: ThemeColor| match value {
+        None => default,
+        Some(value) => ThemeColor::parse(value).unwrap_or_else(|error| {
+            eprintln!("Herdr Pluck: ignoring theme.{role}.{field}: {error}");
+            default
+        }),
+    };
+    TextStyle {
+        fg: color(&config.fg, "fg", base.fg),
+        bg: color(&config.bg, "bg", base.bg),
+        bold: config.bold.unwrap_or(base.bold),
+        dim: config.dim.unwrap_or(base.dim),
+    }
 }
 
 fn load_global_config() -> Result<GlobalConfigFile> {
     let Some(config_dir) = global_config_dir()? else {
-        return Ok(GlobalConfigFile {
-            project: ProjectConfig::default(),
-            patterns: Vec::new(),
-        });
+        return Ok(GlobalConfigFile::default());
     };
     load_config_file(&config_dir.join(CONFIG_FILE)).map(|config| config.unwrap_or_default())
 }
@@ -204,6 +275,64 @@ regex = "ABC-(?<match>[0-9]+)"
         assert_eq!(specs[0].priority, 25);
         assert!(config.project.patterns);
         assert_eq!(config.project.pattern_files, vec![".herdr-pluck.toml"]);
+    }
+
+    #[test]
+    fn missing_theme_uses_default_theme() {
+        let config: GlobalConfigFile = toml::from_str("").unwrap();
+
+        assert_eq!(resolve_theme(&config.theme), PickerTheme::default());
+    }
+
+    #[test]
+    fn theme_overrides_only_configured_fields() {
+        let config: GlobalConfigFile = toml::from_str(
+            r##"[theme.hint]
+bg = "#ff8800"
+bold = false
+
+[theme.match]
+fg = "dark-green"
+"##,
+        )
+        .unwrap();
+
+        let theme = resolve_theme(&config.theme);
+        let defaults = PickerTheme::default();
+
+        assert_eq!(
+            theme.hint.bg,
+            ThemeColor::Rgb {
+                r: 255,
+                g: 136,
+                b: 0
+            }
+        );
+        assert!(!theme.hint.bold);
+        assert_eq!(theme.hint.fg, defaults.hint.fg);
+        assert_eq!(theme.matched.fg, ThemeColor::Ansi(2));
+        assert_eq!(theme.unmatched, defaults.unmatched);
+    }
+
+    #[test]
+    fn invalid_theme_color_falls_back_without_dropping_patterns() {
+        let config: GlobalConfigFile = toml::from_str(
+            r#"[theme.hint]
+fg = "not-a-color"
+bg = "blue"
+
+[[patterns]]
+name = "ticket"
+regex = "ABC-[0-9]+"
+"#,
+        )
+        .unwrap();
+
+        let theme = resolve_theme(&config.theme);
+
+        assert_eq!(theme.hint.fg, PickerTheme::default().hint.fg);
+        assert_eq!(theme.hint.bg, ThemeColor::Ansi(12));
+        assert_eq!(resolve_pattern_specs(config, None).len(), 1);
     }
 
     #[test]

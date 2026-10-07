@@ -104,7 +104,7 @@ pub fn run_readonly_picker(snapshot: &PickerSnapshot) -> Result<PickerOutcome> {
     let view = build_readonly_picker_view(snapshot);
     let mut stdout = io::stdout();
     let _cursor = CursorGuard::hide()?;
-    terminal::emit_render_lines(&mut stdout, &view.lines)?;
+    terminal::emit_render_lines(&mut stdout, &view.lines, &snapshot.theme)?;
     stdout.flush()?;
 
     enable_raw_mode().context("failed to enable raw mode for readonly picker")?;
@@ -189,6 +189,7 @@ mod tests {
             },
             action: PickerAction::Copy,
             custom_patterns: Vec::new(),
+            theme: Default::default(),
         }
     }
 

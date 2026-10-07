@@ -1,9 +1,8 @@
+use crate::config::PickerConfig;
 use crate::herdr::client::{HerdrClient, LaunchLayoutNode};
 use crate::herdr::layout::{derive_layout_recreation_plan, derive_source_geometry};
 use crate::herdr::snapshot::{build_source_snapshot, PickerLaunchFiles};
-use crate::model::{
-    LayoutNode, PaneId, PatternSpec, PickerAction, PickerReturnContext, PickerSnapshot,
-};
+use crate::model::{LayoutNode, PaneId, PickerAction, PickerReturnContext, PickerSnapshot};
 use crate::viewport::map_visible_viewport;
 use anyhow::{bail, Context, Result};
 use std::path::Path;
@@ -14,7 +13,7 @@ pub fn launch_layout_tab_picker<C: HerdrClient>(
     target: &PaneId,
     binary_path: &Path,
     action: PickerAction,
-    custom_patterns: Vec<PatternSpec>,
+    config: PickerConfig,
 ) -> Result<()> {
     let layout = client.pane_layout(target)?;
     let plan = derive_layout_recreation_plan(&layout, target)?;
@@ -49,7 +48,7 @@ pub fn launch_layout_tab_picker<C: HerdrClient>(
         Some(viewport),
         return_context.clone(),
         action,
-        custom_patterns,
+        config,
     )?;
 
     let files = PickerLaunchFiles::create(&snapshot)?;
@@ -324,6 +323,7 @@ mod tests {
             },
             action: PickerAction::Copy,
             custom_patterns: Vec::new(),
+            theme: Default::default(),
         }
     }
 
@@ -385,7 +385,7 @@ mod tests {
             &PaneId::new("w1:p1"),
             Path::new("/tmp/herdr pluck"),
             PickerAction::Copy,
-            Vec::new(),
+            PickerConfig::default(),
         )
         .unwrap();
 
@@ -422,7 +422,7 @@ mod tests {
             &PaneId::new("w1:p1"),
             Path::new("/tmp/herdr-pluck"),
             PickerAction::Copy,
-            Vec::new(),
+            PickerConfig::default(),
         )
         .unwrap_err();
 

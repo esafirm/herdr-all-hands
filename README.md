@@ -167,6 +167,35 @@ Lower `priority` values win overlapping matches. If omitted, custom pattern prio
 
 When identical text appears more than once, every visible occurrence shows the same hint and copies the same text.
 
+## Theme
+
+Picker colors can be customized in the same global `config.toml`. There are three roles: `hint` (the typed label), `match` (the rest of the matched text), and `unmatched` (all other pane text). Every field is optional; unset fields keep the defaults shown here:
+
+```toml
+[theme.hint]
+fg = "black"
+bg = "cyan"
+bold = true
+dim = false
+
+[theme.match]
+fg = "yellow"
+bg = "reset"
+
+[theme.unmatched]
+fg = "dark_grey"
+dim = true
+```
+
+Colors accept:
+
+- Names: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `grey`, and `dark_` variants (`dark_red`, `dark_grey`, ...). As in crossterm, plain names are the bright ANSI colors and `dark_` names are the normal ones; both follow your terminal palette.
+- `#rrggbb` hex codes for true color.
+- `0`-`255` palette indexes.
+- `reset` (or `default`) for the terminal's default color.
+
+An invalid color is reported and that field falls back to its default. Themes are only read from the global config, not project-local files.
+
 ## Releasing binaries
 
 Tag releases as `vX.Y.Z`. GitHub Actions validates the crate, builds release archives, and uploads platform binaries to the matching GitHub Release.
