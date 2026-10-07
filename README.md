@@ -25,7 +25,7 @@ Invoke an action while a pane is focused and type the displayed hint for the ite
 From the remote repository:
 
 ```bash
-herdr plugin install rmarganti/herdr-pluck
+herdr plugin install esafirm/herdr-pluck
 ```
 
 Published releases provide prebuilt binaries for these targets:
@@ -36,7 +36,7 @@ Published releases provide prebuilt binaries for these targets:
 To install a specific branch, tag, or commit, pass `--ref`:
 
 ```bash
-herdr plugin install rmarganti/herdr-pluck --ref main
+herdr plugin install esafirm/herdr-pluck --ref main
 ```
 
 Install first downloads the GitHub Release asset matching the version in `herdr-plugin.toml`. If that asset is unavailable, it falls back to a local Cargo build when Rust is available.
@@ -53,17 +53,25 @@ By default, linking also installs the prebuilt binary matching `herdr-plugin.tom
 HERDR_PLUCK_BUILD_FROM_SOURCE=1 herdr plugin link .
 ```
 
+Or use the Makefile, which builds from source and links in one step (`make help` lists all targets):
+
+```bash
+make install   # build ./bin/herdr-pluck and link this checkout
+make build     # rebuild after code changes; the link picks it up directly
+make uninstall # unlink from Herdr
+```
+
 Verify Herdr can see the action:
 
 ```bash
-herdr plugin action list --plugin rmarganti.herdr-pluck
+herdr plugin action list --plugin esafirm.herdr-all-hands
 ```
 
 The action ids are:
 
 ```text
-rmarganti.herdr-pluck.pluck
-rmarganti.herdr-pluck.open-url
+esafirm.herdr-all-hands.pluck
+esafirm.herdr-all-hands.open-url
 ```
 
 ## Keybinding
@@ -74,7 +82,7 @@ Add a Herdr `plugin_action` binding to your Herdr config, choosing any free key 
 [[keys.command]]
 key = "prefix+q"
 type = "plugin_action"
-command = "rmarganti.herdr-pluck.pluck"
+command = "esafirm.herdr-all-hands.pluck"
 description = "pluck visible token"
 ```
 
@@ -84,7 +92,7 @@ To bind the dedicated URL action separately:
 [[keys.command]]
 key = "prefix+o"
 type = "plugin_action"
-command = "rmarganti.herdr-pluck.open-url"
+command = "esafirm.herdr-all-hands.open-url"
 description = "open visible URL"
 ```
 
@@ -97,7 +105,7 @@ herdr server reload-config
 ## Usage
 
 1. Focus a Herdr pane containing a URL, path, commit SHA, UUID, IP address, long numeric identifier, hex literal, Kubernetes reference, Git status path, branch, or diff path.
-2. Invoke `rmarganti.herdr-pluck.pluck` through your keybinding or Herdr's plugin action command.
+2. Invoke `esafirm.herdr-all-hands.pluck` through your keybinding or Herdr's plugin action command.
 3. Herdr Pluck opens a temporary picker tab that mirrors the source layout and shows hints over copyable text in the target pane.
 4. Type the shown one- or two-letter hint to copy that token and close the picker.
 5. Press Escape or Ctrl-C to cancel without copying.
@@ -107,8 +115,8 @@ The `open-url` action uses the same picker flow, but shows only `http://`, `http
 You can also invoke either action from the CLI:
 
 ```bash
-herdr plugin action invoke rmarganti.herdr-pluck.pluck
-herdr plugin action invoke rmarganti.herdr-pluck.open-url
+herdr plugin action invoke esafirm.herdr-all-hands.pluck
+herdr plugin action invoke esafirm.herdr-all-hands.open-url
 ```
 
 ## What gets matched
@@ -129,7 +137,7 @@ Herdr Pluck recognizes these built-in token types, in priority order:
 Custom global patterns can be added in the plugin config directory:
 
 ```bash
-CONFIG_DIR="$(herdr plugin config-dir rmarganti.herdr-pluck)"
+CONFIG_DIR="$(herdr plugin config-dir esafirm.herdr-all-hands)"
 $EDITOR "$CONFIG_DIR/config.toml"
 ```
 
@@ -207,7 +215,7 @@ If invoking the action does nothing useful, check that the plugin is linked and 
 ```bash
 herdr plugin link .
 ls -l ./bin/herdr-pluck
-herdr plugin action list --plugin rmarganti.herdr-pluck
+herdr plugin action list --plugin esafirm.herdr-all-hands
 ```
 
 If no release asset matches the plugin version, make sure Rust/Cargo is available for the local fallback build. Set `HERDR_PLUCK_BUILD_FROM_SOURCE=1` to skip the release download and build the checked-out source explicitly.

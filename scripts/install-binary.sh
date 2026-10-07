@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-REPO_OWNER="rmarganti"
+REPO_OWNER="esafirm"
 REPO_NAME="herdr-pluck"
 BIN_DIR="bin"
 BIN_PATH="$BIN_DIR/herdr-pluck"

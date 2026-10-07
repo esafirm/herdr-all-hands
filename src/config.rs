@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 /// Herdr plugin id used for config directory discovery outside plugin action env.
-pub const PLUGIN_ID: &str = "rmarganti.herdr-pluck";
+pub const PLUGIN_ID: &str = "esafirm.herdr-all-hands";
 
 const CONFIG_FILE: &str = "config.toml";
 const DEFAULT_PROJECT_CONFIG_FILE: &str = ".herdr-pluck.toml";
