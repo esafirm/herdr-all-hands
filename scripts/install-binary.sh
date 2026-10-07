@@ -2,7 +2,9 @@
 set -eu
 
 REPO_OWNER="esafirm"
-REPO_NAME="herdr-pluck"
+REPO_NAME="herdr-all-hands"
+# Release archives keep the binary's name, independent of the repository name.
+ARCHIVE_PREFIX="herdr-pluck"
 BIN_DIR="bin"
 BIN_PATH="$BIN_DIR/herdr-pluck"
 log() {
@@ -16,7 +18,7 @@ plugin_version() {
 archive_name() {
     version="$1"
     target="$2"
-    printf '%s-v%s-%s.tar.gz' "$REPO_NAME" "$version" "$target"
+    printf '%s-v%s-%s.tar.gz' "$ARCHIVE_PREFIX" "$version" "$target"
 }
 
 release_url() {

@@ -1,5 +1,7 @@
 # Herdr Pluck
 
+> Fork of [rmarganti/herdr-pluck](https://github.com/rmarganti/herdr-pluck) that adds a configurable [theme](#theme) and [browser](#browser). Plugin id: `esafirm.herdr-all-hands`.
+
 Herdr Pluck is a Herdr plugin for quickly copying visible terminal tokens or opening visible URLs with short keyboard hints, inspired by `tmux-fingers`.
 
 Invoke an action while a pane is focused and type the displayed hint for the item you want. The pluck action copies the selected text to your system clipboard, while the URL action opens the selection in your browser (Google Chrome by default, [configurable](#browser)). Escape or Ctrl-C cancels.
@@ -25,7 +27,7 @@ Invoke an action while a pane is focused and type the displayed hint for the ite
 From the remote repository:
 
 ```bash
-herdr plugin install esafirm/herdr-pluck
+herdr plugin install esafirm/herdr-all-hands
 ```
 
 Published releases provide prebuilt binaries for these targets:
@@ -36,7 +38,7 @@ Published releases provide prebuilt binaries for these targets:
 To install a specific branch, tag, or commit, pass `--ref`:
 
 ```bash
-herdr plugin install esafirm/herdr-pluck --ref main
+herdr plugin install esafirm/herdr-all-hands --ref main
 ```
 
 Install first downloads the GitHub Release asset matching the version in `herdr-plugin.toml`. If that asset is unavailable, it falls back to a local Cargo build when Rust is available.
