@@ -95,8 +95,11 @@ impl HerdrAdapter {
                 }
             })
             .and_then(|_| run_snapshot_picker(&snapshot));
-        let cleanup = cleanup_session(&mut client, &snapshot.session, &temp_tab);
+        // Removes launch files before closing the temporary tab: Herdr tears
+        // down the tab's panes (including this process) on close, so file
+        // cleanup ordered after the tab close never runs and snapshots leak.
         let files_cleanup = files.cleanup();
+        let cleanup = cleanup_session(&mut client, &snapshot.session, &temp_tab);
         match primary {
             Err(e) => {
                 if let Err(c) = cleanup {
